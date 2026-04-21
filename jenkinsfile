@@ -22,25 +22,24 @@ pipeline {
     parameters {
         choice(
             name: 'BUILD_TYPE',
-            choices: ['release', 'debug'],
-            description: 'Pilih Tipe Build (Gunakan Release untuk hasil audit yang akurat)'
+            choices: ['debug', 'release'],
+            description: 'Pilih tipe build APK (Release direkomendasikan untuk audit)'
         )
     }
 
     environment {
-        ANDROID_HOME     = "C:\\Users\\SECULAB\\AppData\\Local\\Android\\Sdk"
+        ANDROID_HOME     = "C:\\Users\\Lenovo\\AppData\\Local\\Android\\Sdk"
         ANDROID_SDK_ROOT = "${ANDROID_HOME}"
-        JAVA_HOME        = "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.16.8-hotspot"
-        FLUTTER_HOME     = "C:\\flutter"
+        FLUTTER_HOME     = "D:\\flutter"
+        JAVA_HOME        = "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot"
 
-        PATH = "${env.FLUTTER_HOME}\\bin;${env.JAVA_HOME}\\bin;${env.ANDROID_HOME}\\tools;${env.ANDROID_HOME}\\platform-tools;${env.ANDROID_HOME}\\emulator;${env.PATH}"
+        PATH = "${FLUTTER_HOME}\\bin;${JAVA_HOME}\\bin;${ANDROID_HOME}\\platform-tools;${ANDROID_HOME}\\emulator;${env.PATH}"
 
-        AVD_NAME        = "Pixel_4_XL_2"
-        APP_PACKAGE     = "com.example.mobileapp"
-        APK_OUTPUT_DIR  = "C:\\ApksGenerated"
+        AVD_NAME    = "Pixel_4_XL_2"
+        APP_PACKAGE = "com.example.bmi_calculator"
 
-        MOBSF_URL       = "http://localhost:8000"
-        MOBSF_TOKEN     = "fe55f4207016d5c6515a1df3b80a710d5d3b40d679462b27e333b004598d75ac"
+        MOBSF_URL   = "http://localhost:8000"
+        MOBSF_TOKEN = "8e2a73a972044f782981594b2eefdf86e13e08745853097432943c9bcccd2a52"
     }
 
     stages {
@@ -48,10 +47,7 @@ pipeline {
         // ================= CHECKOUT =================
         stage('Checkout') {
             steps {
-                echo 'Starting Checkout stage'
-                git branch: 'main',
-                    url: 'https://github.com/hnnayy/todo.git',
-                    credentialsId: 'github-pat-global-test'
+                git branch: 'main', url: 'https://github.com/hnnayy/BMI_calculator.git'
             }
         }
 
@@ -59,26 +55,28 @@ pipeline {
         stage('Prepare Workspace') {
             steps {
                 bat 'if not exist apk-outputs mkdir apk-outputs'
-                bat "if not exist \"${env.APK_OUTPUT_DIR}\" mkdir \"${env.APK_OUTPUT_DIR}\""
             }
         }
 
-        // ================= CLEAN APK OUTPUT DIR =================
-        stage('Clean Folder C:\\ApksGenerated') {
+        // ================= FLUTTER ENV =================
+        stage('Flutter Environment Check') {
             steps {
-                echo "Cleaning ${env.APK_OUTPUT_DIR} folder."
-                bat "del /Q \"${env.APK_OUTPUT_DIR}\\*\""
+                bat """
+                git config --global --add safe.directory "%WORKSPACE%"
+                flutter config --jdk-dir "${env.JAVA_HOME}"
+                flutter doctor -v
+                """
             }
         }
 
         // ================= BUILD APK =================
-        stage('Build Application') {
+        stage('Build APK') {
             steps {
-                echo "Starting Build Application stage (Mode: ${params.BUILD_TYPE})"
-                bat 'git config --global --add safe.directory "%WORKSPACE%"'
-                bat 'flutter pub get'
-                bat "flutter build apk --${params.BUILD_TYPE}"
-                bat 'dir build\\app\\outputs\\flutter-apk'
+                bat """
+                flutter pub get
+                flutter build apk --${params.BUILD_TYPE}
+                dir build\\app\\outputs\\flutter-apk
+                """
             }
         }
 
@@ -104,7 +102,7 @@ pipeline {
                     ).trim()
 
                     def apkHash = extractHashFromResponse(uploadResponse)
-                    if (!apkHash) error "MobSF upload failed — hash kosong."
+                    if (!apkHash) error "MobSF upload failed"
 
                     env.APK_HASH = apkHash
                     echo "SAST Hash: ${apkHash}"
@@ -139,22 +137,15 @@ pipeline {
         // ================= EMULATOR =================
         stage('Start Emulator') {
             steps {
-                script {
-                    def devices = bat(script: "adb devices", returnStdout: true)
-                    if (!devices.contains("emulator")) {
-                        echo "Starting emulator with software rendering to prevent Impeller crash..."
-                        bat """
-                        start /b "" "${env.ANDROID_HOME}\\emulator\\emulator.exe" ^
-                        -avd "${env.AVD_NAME}" ^
-                        -no-window -no-audio ^
-                        -gpu swiftshader_indirect -wipe-data
-                        """
-                        sleep(time: 60, unit: 'SECONDS')
-                        bat "adb wait-for-device"
-                    }
-                    sleep(time: 15, unit: 'SECONDS')
-                    bat "adb shell getprop sys.boot_completed"
-                }
+                bat """
+                start /b "" "${env.ANDROID_HOME}\\emulator\\emulator.exe" ^
+                -avd "${env.AVD_NAME}" ^
+                -no-window -no-audio ^
+                -gpu swiftshader_indirect -wipe-data
+                """
+                sleep 60
+                bat "adb wait-for-device"
+                bat "adb shell getprop sys.boot_completed"
             }
         }
 
@@ -164,15 +155,12 @@ pipeline {
                 script {
                     def timestamp  = new Date().format("dd-MM-yyyy_HH-mm-ss")
                     def sourcePath = "build\\app\\outputs\\flutter-apk\\app-${params.BUILD_TYPE}.apk"
-                    def destPath   = "apk-outputs\\todo-${params.BUILD_TYPE}-${timestamp}.apk"
+                    def destPath   = "apk-outputs\\bmi_calculator-${params.BUILD_TYPE}-${timestamp}.apk"
 
-                    echo "Copying APK from ${sourcePath} to ${destPath}"
                     bat "copy \"${sourcePath}\" \"${destPath}\""
 
-                    env.APK_PATH = destPath
-
                     bat(script: "adb uninstall ${env.APP_PACKAGE}", returnStatus: true)
-                    bat "adb install -r \"${env.APK_PATH}\""
+                    bat "adb install -r \"${destPath}\""
                 }
             }
         }
@@ -181,9 +169,8 @@ pipeline {
         stage('DAST - Dynamic Analysis (MobSF)') {
             steps {
                 script {
-                    echo "Unlocking screen..."
                     bat "adb shell input keyevent 82"
-                    sleep(time: 2, unit: 'SECONDS')
+                    sleep 2
 
                     bat """
                     @curl -s -X POST ^
@@ -192,10 +179,8 @@ pipeline {
                     ${env.MOBSF_URL}/api/v1/dynamic/start_analysis
                     """
 
-                    echo "Waiting 25s for App Launch..."
-                    sleep(time: 25, unit: 'SECONDS')
+                    sleep 25
 
-                    echo "Injecting Frida Hooks..."
                     bat """
                     @curl -s -X POST ^
                     -H "Authorization: ${env.MOBSF_TOKEN}" ^
@@ -203,18 +188,12 @@ pipeline {
                     ${env.MOBSF_URL}/api/v1/frida/instrument
                     """
 
-                    sleep(time: 5, unit: 'SECONDS')
-
-                    echo "Running Monkey (Fast Mode)..."
                     try {
                         bat "adb shell monkey -p ${env.APP_PACKAGE} --pct-syskeys 0 --throttle 1500 -v 200"
                     } catch (Exception e) {
                         echo "Monkey finished."
                     }
 
-                    sleep(time: 15, unit: 'SECONDS')
-
-                    echo "Running TLS/SSL Security Tests..."
                     def tlsRaw = bat(
                         script: """
                         @curl -s -X POST ^
@@ -228,7 +207,6 @@ pipeline {
                     def tlsJson = cleanJsonString(tlsRaw)
                     if (tlsJson) {
                         writeFile file: 'tls_report.json', text: tlsJson
-                        echo "✅ TLS Report Saved."
                     }
 
                     bat """
@@ -238,7 +216,7 @@ pipeline {
                     ${env.MOBSF_URL}/api/v1/dynamic/stop_analysis
                     """
 
-                    def rawOutput = bat(
+                    def raw = bat(
                         script: """
                         @curl -s -X POST ^
                         -H "Authorization: ${env.MOBSF_TOKEN}" ^
@@ -248,14 +226,11 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-                    def json = cleanJsonString(rawOutput)
+                    def json = cleanJsonString(raw)
                     if (json) {
                         writeFile file: 'dast_report.json', text: json
                         archiveArtifacts artifacts: 'dast_report.json, tls_report.json', allowEmptyArchive: true
-                        echo "✅ DAST Report URL: ${env.MOBSF_URL}/dynamic_report/${env.APK_HASH}/"
-                    } else {
-                        echo "WARNING: Gagal ekstrak JSON dari output DAST."
-                        writeFile file: 'dast_raw.txt', text: rawOutput
+                        echo "✅ DAST Report URL: ${env.MOBSF_URL}/dynamic_report/${env.APK_HASH}/ "
                     }
                 }
             }
@@ -267,53 +242,49 @@ pipeline {
                 bat 'taskkill /F /IM qemu-system-x86_64.exe /T || echo Emulator already stopped'
             }
         }
+stage('Download PDF Report') {
+    steps {
+        script {
+            if (env.APK_HASH) {
 
-        // ================= DOWNLOAD PDF =================
-        stage('Download PDF Report') {
-            steps {
-                script {
-                    if (env.APK_HASH) {
-                        echo "Downloading SAST PDF..."
-                        bat """
-                        @curl -s -X POST ^
-                        -H "Authorization: ${env.MOBSF_TOKEN}" ^
-                        --data "hash=${env.APK_HASH}" ^
-                        ${env.MOBSF_URL}/api/v1/download_pdf ^
-                        -o sast_report.pdf
-                        """
+                bat """
+                @curl -s -X POST ^
+                -H "Authorization: ${env.MOBSF_TOKEN}" ^
+                --data "hash=${env.APK_HASH}" ^
+                ${env.MOBSF_URL}/api/v1/download_pdf ^
+                -o sast_report.pdf
+                """
+                echo "Downloading DAST PDF (Custom)..."
+                bat """
+                @curl -L -f ^
+                ${env.MOBSF_URL}/dynamic_pdf/${env.APK_HASH}/ ^
+                --output dast_report.pdf --silent --show-error
+                """
 
-                        echo "Downloading DAST PDF..."
-                        bat """
-                        @curl -L -f ^
-                        ${env.MOBSF_URL}/dynamic_pdf/${env.APK_HASH}/ ^
-                        --output dast_report.pdf --silent --show-error
-                        """
+                sleep 2
+ 
 
-                        sleep(time: 2, unit: 'SECONDS')
+                bat "dir dast_report.pdf"
+                bat "for %%I in (dast_report.pdf) do @echo Size: %%~zI bytes"
 
-                        bat "dir dast_report.pdf"
-                        bat "for %%I in (dast_report.pdf) do @echo Size: %%~zI bytes"
+            } else {
+                echo "APK_HASH not found."
+            }
+            def size = bat(
+                script: '@for %%I in (dast_report.pdf) do @echo %%~zI',
+                returnStdout: true
+            ).trim().split("\\r?\\n")[-1]
 
-                    } else {
-                        echo "APK_HASH not found, skipping PDF download."
-                    }
-
-                    def size = bat(
-                        script: '@for %%I in (dast_report.pdf) do @echo %%~zI',
-                        returnStdout: true
-                    ).trim().split("\\r?\\n")[-1]
-
-                    if (size.toInteger() < 50000) {
-                        error "DAST PDF INVALID: ${size} bytes (terlalu kecil, kemungkinan gagal generate)"
-                    }
-                }
+            if (size.toInteger() < 50000) {
+                error "DAST PDF INVALID: ${size} bytes"
             }
         }
+    }
+}
 
-        // ================= SEND EMAIL (POWERSHELL) =================
-        stage('Send Email Manual') {
-            steps {
-                writeFile file: 'send_email.ps1', text: '''
+stage('Send Email Manual') {
+    steps {
+        writeFile file: 'send_email.ps1', text: '''
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 
 $smtpServer = "smtp.gmail.com"
@@ -326,7 +297,7 @@ $mail = New-Object System.Net.Mail.MailMessage
 $mail.From = $from
 $mail.To.Add($to)
 $mail.Subject = "Security Report Jenkins"
-$mail.Body = "Laporan PDF terlampir dari pipeline Jenkins."
+$mail.Body = "Laporan PDF terlampir"
 
 $att1 = New-Object System.Net.Mail.Attachment("sast_report.pdf")
 $att2 = New-Object System.Net.Mail.Attachment("dast_report.pdf")
@@ -342,18 +313,16 @@ $smtp.DeliveryMethod = [System.Net.Mail.SmtpDeliveryMethod]::Network
 $smtp.Timeout = 30000
 
 $smtp.Send($mail)
-Write-Host "Email sent successfully."
 '''
-                bat 'powershell -ExecutionPolicy Bypass -File send_email.ps1'
-            }
-        }
-
+        bat 'powershell -ExecutionPolicy Bypass -File send_email.ps1'
+    }
+}
     }
 
     post {
         always {
             archiveArtifacts artifacts: 'apk-outputs/*.apk', allowEmptyArchive: true
-            archiveArtifacts artifacts: '*.pdf',            allowEmptyArchive: true
+            archiveArtifacts artifacts: '*.pdf', allowEmptyArchive: true
         }
     }
 }
