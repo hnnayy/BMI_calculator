@@ -30,8 +30,10 @@ pipeline {
     environment {
         ANDROID_HOME     = "C:\\Users\\SECULAB\\AppData\\Local\\Android\\Sdk"
         ANDROID_SDK_ROOT = "${ANDROID_HOME}"
+        JAVA_HOME        = "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.16.8-hotspot"
+        FLUTTER_HOME     = "C:\\flutter"
 
-        PATH = "${env.ANDROID_HOME}\\tools;${env.ANDROID_HOME}\\platform-tools;${env.ANDROID_HOME}\\emulator;${env.PATH}"
+        PATH = "${env.FLUTTER_HOME}\\bin;${env.JAVA_HOME}\\bin;${env.ANDROID_HOME}\\tools;${env.ANDROID_HOME}\\platform-tools;${env.ANDROID_HOME}\\emulator;${env.PATH}"
 
         AVD_NAME        = "Pixel_4_XL_2"
         APP_PACKAGE     = "com.example.mobileapp"
