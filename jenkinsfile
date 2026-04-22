@@ -36,7 +36,7 @@ pipeline {
         PATH = "${env.FLUTTER_HOME}\\bin;${env.JAVA_HOME}\\bin;${env.ANDROID_HOME}\\tools;${env.ANDROID_HOME}\\platform-tools;${env.ANDROID_HOME}\\emulator;${env.PATH}"
 
         AVD_NAME        = "Pixel_4_XL_2"
-        APP_PACKAGE     = "com.example.mobileapp" // Sesuaikan dengan package name aplikasi Anda
+        APP_PACKAGE     = "com.example.bmi_calculator" // Sesuaikan dengan package name aplikasi Anda
         APK_OUTPUT_DIR  = "C:\\ApksGenerated"
 
         MOBSF_URL       = "http://localhost:8000"
@@ -50,7 +50,7 @@ pipeline {
             steps {
                 echo 'Starting Checkout stage'
                 git branch: 'main',
-                    url: 'https://github.com/hnnayy/todo.git',
+                    url: 'https://github.com/hnnayy/BMI_calculator.git',
                     credentialsId: 'github-pat-global-test'
             }
         }
