@@ -200,37 +200,40 @@ pipeline {
         }
 
         stage('Send Email Manual') {
-            steps {
-                script {
-                    if (fileExists('sast_report.pdf') && fileExists('dast_report.pdf')) {
-                        writeFile file: 'send_email.ps1', text: '''
-                        $smtpServer = "smtp.gmail.com"
-                        $smtpPort = 587
-                        $from = "mutiahanin2017@gmail.com"
-                        $to = "mutiahanin2017@gmail.com"
-                        $password = "lyftygsebuyndied"
+    steps {
+        writeFile file: 'send_email.ps1', text: '''
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 
-                        $mail = New-Object System.Net.Mail.MailMessage
-                        $mail.From = $from
-                        $mail.To.Add($to)
-                        $mail.Subject = "Security Report Jenkins - ${env.BUILD_TAG}"
-                        $mail.Body = "Laporan keamanan otomatis selesai dikerjakan."
+$smtpServer = "smtp.gmail.com"
+$smtpPort = 587
+$from = "syifaamaraqueen@gmail.com"
+$to = "syifaamdh@gmail.com"
+$password = "lyftygsebuyndied"
 
-                        if (Test-Path "sast_report.pdf") { $mail.Attachments.Add("sast_report.pdf") }
-                        if (Test-Path "dast_report.pdf") { $mail.Attachments.Add("dast_report.pdf") }
+$mail = New-Object System.Net.Mail.MailMessage
+$mail.From = $from
+$mail.To.Add($to)
+$mail.Subject = "Security Report Jenkins"
+$mail.Body = "Laporan PDF terlampir"
 
-                        $smtp = New-Object System.Net.Mail.SmtpClient($smtpServer, $smtpPort)
-                        $smtp.EnableSsl = $true
-                        $smtp.Credentials = New-Object System.Net.NetworkCredential($from, $password)
-                        $smtp.Send($mail)
-                        '''
-                        bat 'powershell -ExecutionPolicy Bypass -File send_email.ps1'
-                    } else {
-                        echo "Reports missing. Email skipped."
-                    }
-                }
-            }
-        }
+$att1 = New-Object System.Net.Mail.Attachment("sast_report.pdf")
+$att2 = New-Object System.Net.Mail.Attachment("dast_report.pdf")
+
+$mail.Attachments.Add($att1)
+$mail.Attachments.Add($att2)
+
+$smtp = New-Object System.Net.Mail.SmtpClient($smtpServer, $smtpPort)
+$smtp.EnableSsl = $true
+$smtp.UseDefaultCredentials = $false
+$smtp.Credentials = New-Object System.Net.NetworkCredential($from, $password)
+$smtp.DeliveryMethod = [System.Net.Mail.SmtpDeliveryMethod]::Network
+$smtp.Timeout = 30000
+
+$smtp.Send($mail)
+'''
+        bat 'powershell -ExecutionPolicy Bypass -File send_email.ps1'
+    }
+}
     }
 
     post {
